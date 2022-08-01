@@ -61,9 +61,24 @@ class Rocker:
             await uasyncio.sleep_ms(1)
         self.is_stopping = False
 
+    async def interrupt(self):
+        self.is_breaking = True
+        while self.is_working:
+            await uasyncio.sleep_ms(1)
+        self.is_breaking = False
+
     async def init_oscillation(self, amplitude):
         self.is_working = True
-        await self.turn(res_angle=90, speed=90)  # set start position
+        # await self.turn(res_angle=90, speed=90)  # set start position
+
+
+
+
+
+
+
+
+
 
     async def oscillation(self, amplitude=0, speed=0):
 
