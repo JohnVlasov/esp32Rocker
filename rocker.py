@@ -1,5 +1,6 @@
 import math
 
+import utime
 from machine import Pin, PWM
 import uasyncio
 
@@ -11,13 +12,11 @@ class Rocker:
         self.min_duty = 1575  # 1200 min (7940-1575=6365 this diapason equals 180 degrees for my servo MG996R)
         self.max_duty = 7940  # 8600 max
 
-        self.current_angle = 90  # an average position, 90 degrees
-        self.current_speed = 0
-        self.current_amplitude = 0
+        self.init_angle = 90  # an average position, 90 degrees
+        self.current_direction = 'up'
 
-        self.servo.duty_u16(self.angle_to_duty(self.current_angle))  # 90 degrees
+        self.servo.duty_u16(self.angle_to_duty(self.init_angle))  # 90 degrees
 
-        self.speed = 300  # 300 degrees/sec max speed in theory
         self.time_step = 0.04  # 20 msec (50Hz)
 
         self.is_working = False  # servo is not working, it is free
@@ -30,80 +29,51 @@ class Rocker:
     def angle_to_duty(self, angle):
         return int(angle * (self.max_duty - self.min_duty) / 180 + self.min_duty)
 
-    async def turn(self, res_angle=90.0, speed=0):
-        if speed == 0:
-            self.servo.duty_u16(self.angle_to_duty(res_angle))
-        else:
-            if self.servo.duty_u16() > self.max_duty:
-                self.servo.duty_u16(self.max_duty)
-            elif self.servo.duty_u16() < self.min_duty:
-                self.servo.duty_u16(self.min_duty)
-
-            current_angle = self.duty_to_angle(self.servo.duty_u16())
-            t = abs((res_angle - current_angle) / speed)  # time in sec for turning in the needed angle
-            numbers_of_steps = int(t / self.time_step)
-
-            angles = []
-            if numbers_of_steps != 0:
-                angle_step = (res_angle - self.duty_to_angle(self.servo.duty_u16())) / numbers_of_steps
-                for _ in range(numbers_of_steps):
-                    current_angle += angle_step
-                    angles.append(current_angle)
-
-                for a in angles:
-                    await uasyncio.sleep(self.time_step)
-                    self.servo.duty_u16(self.angle_to_duty(a))
-        return self.servo.duty_u16()
-
     async def stop(self):
         self.is_stopping = True
+        start = utime.time()
         while self.is_working:
             await uasyncio.sleep_ms(1)
+            timeout = utime.time() - start
+            if timeout > 10:
+                self.is_working = False
+                break
         self.is_stopping = False
 
-    async def interrupt(self):
-        self.is_breaking = True
-        while self.is_working:
-            await uasyncio.sleep_ms(1)
-        self.is_breaking = False
-
-    async def init_oscillation(self, amplitude):
+    async def oscillation(self, amplitude=0, freq=0):
+        if amplitude == 0 or freq == 0:
+            return
         self.is_working = True
-        # await self.turn(res_angle=90, speed=90)  # set start position
+        init = True  # starting process
 
-
-
-
-
-
-
-
-
-
-    async def oscillation(self, amplitude=0, speed=0):
-
-        await self.init_oscillation(amplitude)
-
-        if speed == 0:
-            speed = self.speed
-        self.current_speed = speed
-        self.current_amplitude = amplitude
-
-        t = amplitude / speed
+        t = 1 / freq
         steps = int(t / self.time_step)
 
-        alphas = []
-        for i in range(1, steps + 1):
-            alphas.append((math.cos(math.pi / steps * i) * (-amplitude / 2)) + 90)
-
-        new_alphas = alphas[len(alphas) // 2:-1] + list(reversed(alphas)) + alphas[0:len(alphas) // 2]
+        alphas = []  # list of angles for servo, started from 90 degrees
+        for i in range(1, (steps + 1)):
+            alphas.append(90 + (1 - math.cos(2 * math.pi / steps * i) * (amplitude / 2)))
+        alphas = alphas[len(alphas) // 4:-1] + alphas[0: len(alphas) // 4]
         while self.is_working:
-            for i in range(len(new_alphas)):
+            for i in range(len(alphas)):
+                if (i < len(alphas) - 1) and (alphas[i + 1] > alphas[i]) or i == len(alphas) - 1:
+                    direction = 'up'
+                else:
+                    direction = 'down'
+
+                if self.current_direction == direction:
+                    if (direction == 'up' and alphas[i] >= 90) or (direction == 'down' and alphas[i] <= 90):
+                        init = False
+                if init:
+                    continue
                 await uasyncio.sleep(self.time_step)
-                self.servo.duty_u16(self.angle_to_duty(new_alphas[i]))
-                if (self.is_stopping and i == len(new_alphas) - 1) or self.is_breaking:
-                    self.is_working = False
-                    self.current_angle = new_alphas[i]
-                    break
+                self.servo.duty_u16(self.angle_to_duty(alphas[i]))
+
+                if self.is_stopping:
+                    if i < (len(alphas) - 1):
+                        if (direction == 'up' and (alphas[i] < 90 <= alphas[i + 1])) or (direction == 'down' and (alphas[i] > 90 >= alphas[i + 1])):
+                            self.is_working = False
+                            self.current_direction = direction
+                            break
+
         self.is_breaking = False
         self.is_stopping = False

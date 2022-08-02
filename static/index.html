@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Cache-control" content="public">
+
     <title>Качалка для кроватки</title>
     <link href="/static/bootstrap.min.css" rel="stylesheet">
     <script src="/static/jquery-3.6.0.min.js"></script>
@@ -16,11 +18,11 @@
     </div>
     <div class="my-5">
         <label for="amplitude" class="form-label h3">Амплитуда <span id="amplitude_info"></span></label>
-        <input type="range" class="form-range" min="0" max="180" step="1" id="amplitude">
+        <input type="range" class="form-range" min="1" max="180" step="1" id="amplitude">
     </div>
     <div class="mb-5">
-        <label for="speed" class="form-label h3">Скорость <span id="speed_info"></span></label>
-        <input type="range" class="form-range" min="0" max="300" step="1" id="speed">
+        <label for="speed" class="form-label h3">Частота <span id="speed_info"></span></label>
+        <input type="range" class="form-range" min="0.1" max="1" step="0.05" id="speed">
     </div>
 
     <div class="d-grid gap-2 mt-5">
@@ -37,12 +39,12 @@
             let btn = this;
             $(btn).prop("disabled", true);
             if ($(btn).hasClass('btn-info')) {
-                let angle = $('#amplitude').val();
-                let speed = $('#speed').val();
-                $.get('/rock', {angle, speed}, function (data) {
+                let ampl = $('#amplitude').val();
+                let freq = $('#speed').val();
+                $.get('/rock', {ampl, freq}, function (data) {
                     console.log(data);
-                    $('#amplitude_info').text(data.amplitude);
-                    $('#speed_info').text(data.speed);
+                    $('#amplitude_info').text(data.ampl);
+                    $('#speed_info').text(data.freq);
                     $(btn).removeClass('btn-info').addClass('btn-warning');
                     $(btn).find('span').text('Остановить');
                     $(btn).prop("disabled", false);
@@ -57,7 +59,18 @@
             }
         });
 
+        $('#speed, #amplitude').change(function () {
+            if ($('#rock').find('span').text() === 'Остановить') {
 
+                let ampl = $('#amplitude').val();
+                let freq = $('#speed').val();
+                $.get('/rock', {ampl, freq}, function (data) {
+                    console.log(data);
+                    $('#amplitude_info').text(data.ampl);
+                    $('#speed_info').text(data.freq);
+                });
+            }
+        });
     });
 </script>
 </body>
